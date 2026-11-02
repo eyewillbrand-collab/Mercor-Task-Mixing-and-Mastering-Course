@@ -1,0 +1,30 @@
+name: Isolated B1 browser memory evidence
+on:
+  push:
+    branches: [audit/b1-memory-profile-4fc91ea]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Serve frozen page and profile actual file selection
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/mmc-http.log 2>&1 &
+          node audit/b1-memory-profile.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: b1-memory-profile
+          path: memory-evidence/
+          if-no-files-found: warn
