@@ -24,7 +24,7 @@ test("mixing laboratory sliders recalculate and warning appears",async({page})=>
  await expect(page.locator("#post")).toHaveText("-17.00");
  await page.locator("#gain").fill("12");
  await expect(page.locator("#clip")).toContainText("exceeds 0 dBFS");
- await page.getByLabel("Your answer").fill("-14");
+ await page.getByLabel("Your answer").fill("-17");
  await page.getByRole("button",{name:"Check calculation"}).click();
  await expect(page.locator("#status")).toContainText("Correct");
 });
