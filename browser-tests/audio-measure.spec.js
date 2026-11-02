@@ -35,3 +35,16 @@ test("390px mobile result layout fits viewport",async({page})=>{
  await expect(page.locator("#results")).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test("oversized WAV is refused before any file bytes are read",async({page})=>{
+ await page.addInitScript(()=>{
+  window.__fileReads=0;
+  const native=File.prototype.arrayBuffer;
+  File.prototype.arrayBuffer=function(){window.__fileReads++;return native.call(this)};
+ });
+ await page.goto("/audio-measure.html");
+ await page.locator("#audio-file").setInputFiles({name:"oversize.wav",mimeType:"audio/wav",buffer:Buffer.alloc(10*1024*1024+1)});
+ await expect(page.locator("#error")).toContainText("10 MiB");
+ await expect(page.locator("#results")).toBeHidden();
+ expect(await page.evaluate(()=>window.__fileReads)).toBe(0);
+});
