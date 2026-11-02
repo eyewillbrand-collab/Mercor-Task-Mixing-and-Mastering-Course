@@ -62,3 +62,15 @@ test("nonstandard extended fmt chunk is rejected even when all RIFF sizes agree"
  const v=new DataView(out.buffer);v.setUint32(4,out.byteLength-8,true);v.setUint32(16,18,true);
  assert.throws(()=>measure(out.buffer),/standard PCM16 fmt/);
 });
+
+test("RIFF chunk traversal is bounded even for tiny zero-length metadata chunks",()=>{
+ const b=wav({frames:1,amplitude:0});
+ function withJunk(count){
+  const out=new Uint8Array(b.byteLength+count*8);out.set(new Uint8Array(b));
+  for(let i=0;i<count;i++)out.set([74,85,78,75],b.byteLength+i*8);
+  new DataView(out.buffer).setUint32(4,out.length-8,true);
+  return out.buffer;
+ }
+ assert.equal(measure(withJunk(126)).silence,true);
+ assert.throws(()=>measure(withJunk(127)),/Too many WAV chunks/);
+});
