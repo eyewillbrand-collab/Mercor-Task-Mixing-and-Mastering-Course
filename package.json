@@ -1,0 +1,11 @@
+{
+  "name": "mercor-mixing-mastering-course",
+  "private": true,
+  "scripts": {
+    "test:math": "node --test tests/*.test.js",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
