@@ -6,6 +6,12 @@ ctx.clearRect(0,0,w,h);ctx.strokeStyle="#60738b";ctx.lineWidth=1;
 for(const db of [-18,-12,-6,0,6,12,18]){const y=h/2-db*h/40;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
 ctx.strokeStyle="#8ce7d8";ctx.lineWidth=3;ctx.beginPath();
 for(let i=0;i<w;i++){const hz=20*Math.pow(1000,i/(w-1)),db=EqMath.response(c,sr,hz).gainDb;const y=h/2-db*h/40;if(i===0)ctx.moveTo(i,y);else ctx.lineTo(i,y)}ctx.stroke();
+// Explicit axis labels remain readable on narrow screens through horizontal graph scrolling.
+ctx.fillStyle="#e0eaf3";ctx.font="13px system-ui";
+for(const db of [-12,0,12]){const y=h/2-db*h/40;ctx.fillText((db>0?"+":"")+db+" dB",6,y-7)}
+for(const [hz,label] of [[100,"100 Hz"],[1000,"1 kHz"],[10000,"10 kHz"]]){
+  const x=Math.log(hz/20)/Math.log(1000)*(w-1);ctx.fillText(label,x-18,h-9);
+}
 const center=EqMath.response(c,sr,f);$("summary").textContent="Calculated center response: "+center.gainDb.toFixed(2)+" dB; phase: "+center.phaseDegrees.toFixed(2)+"°. Frequency axis: logarithmic, 20 Hz to 20 kHz. Vertical range: approximately ±20 dB.";
 canvas.setAttribute("aria-label","Calculated peaking EQ response. Center "+f+" Hz, Q "+q+", gain "+gain+" dB; center response "+center.gainDb.toFixed(2)+" dB.");}
 ["frequency","q","gain"].forEach(id=>$(id).addEventListener("input",draw));

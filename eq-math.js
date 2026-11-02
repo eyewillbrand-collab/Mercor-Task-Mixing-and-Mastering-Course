@@ -11,6 +11,8 @@ return {b0:(1+alpha*A)/a0,b1:(-2*c)/a0,b2:(1-alpha*A)/a0,a1:(-2*c)/a0,a2:(1-alph
 function response(coeff,sampleRate,frequency){
 if(!coeff||!valid(sampleRate)||sampleRate<=0||!valid(frequency)||frequency<0||frequency>sampleRate/2)throw new RangeError("Invalid response request");
 const keys=["b0","b1","b2","a1","a2"];if(!keys.every(k=>valid(coeff[k])))throw new RangeError("Nonfinite coefficients");
+// Jury stability test for normalized second-order denominator: 1 + a1*z^-1 + a2*z^-2.
+if(Math.abs(coeff.a2)>=1||Math.abs(coeff.a1)>=1+coeff.a2)throw new RangeError("Unstable filter");
 const w=2*Math.PI*frequency/sampleRate,c1=Math.cos(w),s1=Math.sin(w),c2=Math.cos(2*w),s2=Math.sin(2*w);
 const nr=coeff.b0+coeff.b1*c1+coeff.b2*c2,ni=-coeff.b1*s1-coeff.b2*s2;
 const dr=1+coeff.a1*c1+coeff.a2*c2,di=-coeff.a1*s1-coeff.a2*s2;

@@ -5,10 +5,11 @@ function finite(value,name){if(typeof value!=="number"||!Number.isFinite(value))
 function compressor(sourcePeak,inputGain,threshold,ratio){
  [sourcePeak,inputGain,threshold,ratio].forEach((v,i)=>finite(v,["sourcePeak","inputGain","threshold","ratio"][i]));
  if(ratio<1)throw new RangeError("ratio must be >= 1");
- const pre=sourcePeak+inputGain;
+ const pre=finite(sourcePeak+inputGain,"pre");
  const over=Math.max(0,pre-threshold);
- const reduction=over*(1-1/ratio);
- return {pre,reduction,post:pre-reduction,preClipped:pre>0};
+ const reduction=finite(over*(1-1/ratio),"reduction");
+ const post=finite(pre-reduction,"post");
+ return {pre,reduction,post,preClipped:pre>0};
 }
 function dbToLinear(db){finite(db,"db");return Math.pow(10,db/20)}
 function linearToDb(amplitude){finite(amplitude,"amplitude");if(amplitude<=0)throw new RangeError("amplitude must be > 0");return 20*Math.log10(amplitude)}

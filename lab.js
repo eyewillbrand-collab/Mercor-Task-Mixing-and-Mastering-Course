@@ -5,7 +5,7 @@ function update(){
  const r=LabMath.compressor(-8,gain,threshold,ratio);
  $("gainValue").textContent=gain;$("thresholdValue").textContent=threshold;$("ratioValue").textContent=ratio;
  $("pre").textContent=r.pre.toFixed(2);$("reduction").textContent=r.reduction.toFixed(2);$("post").textContent=r.post.toFixed(2);
- $("clip").textContent=r.preClipped?"Warning: pre-compressor peak exceeds 0 dBFS.":"Pre-compressor peak remains below digital full scale.";
+ $("clip").textContent=r.preClipped?"Warning: pre-compressor peak exceeds 0 dBFS.":r.pre===0?"Pre-compressor peak is at digital full scale (0 dBFS), with no headroom.":"Pre-compressor peak remains below digital full scale.";
 }
 ["gain","threshold","ratio"].forEach(id=>$(id).addEventListener("input",update));
 $("check").addEventListener("click",()=>{
