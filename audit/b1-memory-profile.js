@@ -24,8 +24,8 @@ function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byte
   for(let i=0;i<5;i++){
    const start=Date.now();
    await page.locator("#audio-file").setInputFiles({name:"max.wav",mimeType:"audio/wav",buffer:bytes});
-   await page.waitForFunction(() => document.querySelector("#status")?.textContent === "Measurement complete.", null, {timeout:15000});
-   durations.push(Date.now()-start);
+   await page.waitForFunction(() => ["Measurement complete.", "Digital silence measured."].includes(document.querySelector("#status")?.textContent), null, {timeout:15000});
+   const state=await page.locator("#status").textContent();if(state!=="Digital silence measured.")throw Error("Unexpected measurement status: "+state);if(!(await page.locator("#results").isVisible()))throw Error("Results not visible after measurement");durations.push(Date.now()-start);
    await sample("selection-"+(i+1));
    await page.locator("#audio-file").setInputFiles([]);
    await page.waitForTimeout(150);
