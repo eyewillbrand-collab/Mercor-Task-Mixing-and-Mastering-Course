@@ -1,0 +1,13 @@
+# Course scope
+
+Seven sequential modules: organization, gain staging, mixing, mastering, publishing, marketing/SEO, release readiness.
+
+The numeric practice checkpoints are deterministic educational examples, not measurements of actual audio or proof of professional competency. The local practice summary can be edited by anyone with access to the browser and is not a verified credential. Future work: additional audio analysis beyond the bounded PCM16 WAV lab, interactive signal flow, validated rubrics, human listening evaluation, accessible PDF reporting and verifiable certificates. Never treat a fixed LUFS value as a universal mastering target.
+
+No private student information or external service credentials are needed for this prototype.
+
+## Gate B1: Local WAV measurement
+
+The optional laboratory measures actual sample peak and pooled RMS from uncompressed RIFF/WAVE signed PCM16 (mono/stereo, 8–96 kHz, ≤30 seconds, ≤10 MiB). It does not resample, upload, play, save or process audio. Results are not LUFS, true peak or perceptual loudness. Future formats require separate authorization.
+
+Parser contract: accepts only a standard 16-byte `fmt ` chunk with PCM format tag 1, 16-bit little-endian signed samples; rejects 18-byte WAVEFORMATEX and WAVE_FORMAT_EXTENSIBLE headers, compressed or float WAV, truncated/partial frames, inaccurate RIFF lengths, unpadded odd chunks and trailing bytes. Unknown well-formed ancillary chunks may be skipped, with a total maximum of 128 chunks. For stereo, sample peak is the maximum across both channels and RMS is pooled across all samples and channels. An unclipped full-scale sine reads about −3.01 dBFS RMS here (not AES17 sine-normalized).
