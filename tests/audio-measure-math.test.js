@@ -74,3 +74,29 @@ test("RIFF chunk traversal is bounded even for tiny zero-length metadata chunks"
  assert.equal(measure(withJunk(126)).silence,true);
  assert.throws(()=>measure(withJunk(127)),/Too many WAV chunks/);
 });
+
+test("exact 30 seconds accepted; one extra frame rejected (P07)",()=>{
+ const exact=measure(wav({rate:8000,frames:8000*30,amplitude:0}));
+ assert.equal(exact.durationSeconds,30);assert.equal(exact.frames,240000);
+ assert.throws(()=>measure(wav({rate:8000,frames:8000*30+1,amplitude:0})),/30 seconds/);
+});
+test("consistent unsupported channel and rate metadata hit their own guards (P14 P22 P23)",()=>{
+ assert.throws(()=>measure(wav({rate:7999,frames:16})),/Sample rate/);
+ assert.throws(()=>measure(wav({rate:96001,frames:16})),/Sample rate/);
+ assert.throws(()=>measure(wav({channels:3,frames:16})),/mono or stereo/);
+});
+test("partial stereo frame rejected with otherwise valid RIFF sizes (P13)",()=>{
+ const b=wav({channels:2,frames:2,amplitude:0});
+ new DataView(b).setUint32(40,7,true);
+ assert.throws(()=>measure(b),/incomplete PCM frames/);
+});
+test("duplicate fmt chunk rejected by specific guard (P18)",()=>{
+ const b=wav({frames:1,amplitude:0}),out=new Uint8Array(b.byteLength+24);
+ out.set(new Uint8Array(b));out.set(new Uint8Array(b,12,24),b.byteLength);
+ new DataView(out.buffer).setUint32(4,out.length-8,true);
+ assert.throws(()=>measure(out.buffer),/Duplicate fmt/);
+});
+test("strict full-scale headroom is positive zero (B1-01)",()=>{
+ const b=wav({frames:1,amplitude:0});new DataView(b).setInt16(44,-32768,true);
+ assert.ok(Object.is(measure(b).headroomDb,0));
+});
