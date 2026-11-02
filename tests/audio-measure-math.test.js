@@ -100,3 +100,24 @@ test("strict full-scale headroom is positive zero (B1-01)",()=>{
  const b=wav({frames:1,amplitude:0});new DataView(b).setInt16(44,-32768,true);
  assert.ok(Object.is(measure(b).headroomDb,0));
 });
+
+test("KIRC K20: headroom is positive and equals -peakDbFS for an ordinary signal",()=>{
+ const d=measure(wav());
+ near(d.headroomDb,6.020599913,1e-6);
+ assert.ok(d.headroomDb>0);
+ assert.ok(Math.abs(d.headroomDb+d.peakDbFS)<1e-12);
+});
+test("KIRC K19: digital silence reports null headroom, not zero",()=>{
+ assert.equal(measure(wav({frames:1,amplitude:0})).headroomDb,null);
+});
+test("KIRC K23: mono file reports exactly one channel",()=>{
+ assert.equal(measure(wav()).channels,1);
+});
+test("KIRC K01: RIFF container with a non-WAVE form type is rejected",()=>{
+ const b=wav({frames:1,amplitude:0}),u=new Uint8Array(b);
+ u.set([65,86,73,32],8); // "AVI "
+ assert.throws(()=>measure(b),/RIFF\/WAVE/);
+});
+test("KIRC K07: byte limit is pinned to the advertised 10 MiB literal",()=>{
+ assert.equal(MAX_BYTES,10485760);
+});
