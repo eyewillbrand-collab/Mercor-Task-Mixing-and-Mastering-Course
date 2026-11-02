@@ -8,8 +8,9 @@ function measure(buffer){
  const v=new DataView(buffer),tag=p=>String.fromCharCode(...new Uint8Array(buffer,p,4));
  if(tag(0)!=="RIFF"||tag(8)!=="WAVE")fail("Only RIFF/WAVE supported");
  if(v.getUint32(4,true)!==n-8)fail("Inconsistent RIFF length");
- let pos=12,fmt=null,data=null;
+ let pos=12,fmt=null,data=null,chunks=0;
  while(pos<n){
+  if(++chunks>128)fail("Too many WAV chunks");
   if(n-pos<8)fail("Truncated chunk header");
   const name=tag(pos),size=v.getUint32(pos+4,true),start=pos+8;
   if(size>n-start)fail("Chunk exceeds RIFF bounds");
