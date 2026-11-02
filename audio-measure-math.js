@@ -30,7 +30,7 @@ function measure(buffer){
  let peak=0,sum=0;
  for(let p=data.start;p<data.start+data.size;p+=2){const x=v.getInt16(p,true)/32768,a=Math.abs(x);peak=Math.max(peak,a);sum+=x*x}
  const rms=Math.sqrt(sum/(frames*fmt.channels)),db=x=>x===0?null:20*Math.log10(x);
- return {sampleRate:fmt.rate,channels:fmt.channels,frames,durationSeconds:duration,silence:peak===0,peakDbFS:db(peak),rmsDbFS:db(rms),headroomDb:peak===0?null:-db(peak)};
+ return {sampleRate:fmt.rate,channels:fmt.channels,frames,durationSeconds:duration,silence:peak===0,peakDbFS:db(peak),rmsDbFS:db(rms),headroomDb:peak===0?null:peak===1?0:-db(peak)};
 }
 return {measure,MAX_BYTES,MAX_SECONDS};
 });
