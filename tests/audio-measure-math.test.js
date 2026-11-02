@@ -49,3 +49,16 @@ test("unsupported floating point, RF64, big endian and zero frames fail closed",
  v.setUint32(40,2,true);new Uint8Array(b)[0]=82;new Uint8Array(b)[1]=70;new Uint8Array(b)[2]=54;new Uint8Array(b)[3]=52;
  assert.throws(()=>measure(b),/RIFF/);
 });
+
+test("empty data chunk and fully consistent out-of-range sample rates are rejected",()=>{
+ assert.throws(()=>measure(wav({frames:0,amplitude:0})),/Empty/);
+ assert.throws(()=>measure(wav({rate:96001,frames:1,amplitude:0})),/Sample rate/);
+ assert.throws(()=>measure(wav({rate:7999,frames:1,amplitude:0})),/Sample rate/);
+});
+test("nonstandard extended fmt chunk is rejected even when all RIFF sizes agree",()=>{
+ const b=wav({frames:1,amplitude:0}),out=new Uint8Array(b.byteLength+2);
+ out.set(new Uint8Array(b,0,36),0);
+ out.set(new Uint8Array(b,36),38);
+ const v=new DataView(out.buffer);v.setUint32(4,out.byteLength-8,true);v.setUint32(16,18,true);
+ assert.throws(()=>measure(out.buffer),/standard PCM16 fmt/);
+});
