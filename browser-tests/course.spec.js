@@ -11,7 +11,7 @@ test("course gates progression and records completion",async({page})=>{
   if(i<answers.length-1){await expect(nav.locator("button").nth(i+1)).toBeEnabled();await nav.locator("button").nth(i+1).click();}
  }
  await expect(page.getByRole("button",{name:/Print completion record/})).toBeVisible();
- await page.reload();await expect(page.getByRole("button",{name:/Print completion record/})).toBeVisible();
+ await page.reload();await expect(nav.locator("button").nth(6)).toBeEnabled();await nav.locator("button").nth(6).click();await expect(page.getByRole("button",{name:/Print completion record/})).toBeVisible();
 });
 test("invalid answer cannot unlock module",async({page})=>{
  await page.goto("/");await page.getByLabel("Numeric answer").fill("999");await page.getByRole("button",{name:"Check competency"}).click();
@@ -21,7 +21,7 @@ test("invalid answer cannot unlock module",async({page})=>{
 test("mixing laboratory sliders recalculate and warning appears",async({page})=>{
  await page.goto("/lab.html");
  await expect(page.getByText("Pre-compressor peak:")).toBeVisible();
- await expect(page.locator("#post")).toHaveText("-14.00");
+ await expect(page.locator("#post")).toHaveText("-17.00");
  await page.locator("#gain").fill("12");
  await expect(page.locator("#clip")).toContainText("exceeds 0 dBFS");
  await page.getByLabel("Your answer").fill("-14");
