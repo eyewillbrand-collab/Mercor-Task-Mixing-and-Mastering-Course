@@ -14,7 +14,10 @@ test("reject invalid requests and unstable filters",()=>{
  assert.throws(()=>m.response({b0:1,b1:0,b2:0,a1:-1,a2:0},48000,0));
  assert.throws(()=>m.response({b0:NaN,b1:0,b2:0,a1:0,a2:0},48000,1000));
  assert.throws(()=>m.response({b0:1,b1:0,b2:0,a1:-2.5,a2:1.5},48000,1000));
- assert.throws(()=>m.response({b0:1,b1:0,b2:0,a1:-1.999999999999,a2:0.9999999999995},48000,0));
+ assert.throws(()=>m.response({b0:1,b1:0,b2:0,a1:-1.8,a2:0.5},48000,1000),/Unstable/);
+});
+test("stable near-pole coefficients reject singular response at DC",()=>{
+ assert.throws(()=>m.response({b0:1,b1:0,b2:0,a1:-1.999999999999,a2:0.9999999999995},48000,0),/Singular/);
 });
 test("golden coverage deterministic bounded and distinct",()=>{const a=m.goldenFrequencies(64,20,20000),b=m.goldenFrequencies(64,20,20000);assert.deepEqual(a,b);assert.ok(a.every(f=>f>=20&&f<20000));assert.equal(new Set(a.map(v=>v.toFixed(8))).size,64)});
 // 64 frequency-response magnitudes computed independently with SciPy 1.17.0 signal.freqz,
