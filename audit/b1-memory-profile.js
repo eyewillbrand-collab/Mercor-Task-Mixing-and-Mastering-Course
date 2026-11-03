@@ -96,7 +96,59 @@ function wav(nonSilent=false){const n=10485760,b=Buffer.alloc(n),v=new DataView(
    };
    await sample("used-context-while-control-open");
   }finally{await controlContext.close()}
-  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,navigationComparison,contextComparison,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
+  // Consolidated audit campaign: verify GC, capture object-level heap profiles,
+  // and compare with a never-exercised context. No production source modification.
+  const heapEvidence=[];
+  const heapDir="memory-evidence/heap";
+  fs.mkdirSync(heapDir,{recursive:true});
+  async function heapSnapshot(session,label){
+   await session.send("HeapProfiler.enable");
+   await session.send("HeapProfiler.collectGarbage");
+   const chunks=[];
+   const listener=event=>chunks.push(event.chunk);
+   session.on("HeapProfiler.addHeapSnapshotChunk",listener);
+   try{await session.send("HeapProfiler.takeHeapSnapshot",{reportProgress:false})}
+   finally{session.off("HeapProfiler.addHeapSnapshotChunk",listener)}
+   const raw=chunks.join("");
+   if(!raw.startsWith("{")||!raw.includes('"nodes"')||!raw.includes('"edges"'))throw Error("Heap snapshot invalid: "+label);
+   const parsed=JSON.parse(raw),meta=parsed.snapshot.meta;
+   const stride=meta.node_fields.length,types=meta.node_types[meta.node_fields.indexOf("type")];
+   const ti=meta.node_fields.indexOf("type"),ni=meta.node_fields.indexOf("name"),si=meta.node_fields.indexOf("self_size");
+   const byType=new Map(),byName=new Map();
+   for(let i=0;i<parsed.nodes.length;i+=stride){
+    const type=types[parsed.nodes[i+ti]],name=parsed.strings[parsed.nodes[i+ni]],size=parsed.nodes[i+si];
+    const t=byType.get(type)||{count:0,selfBytes:0};t.count++;t.selfBytes+=size;byType.set(type,t);
+    const key=type+":"+name,n=byName.get(key)||{count:0,selfBytes:0};n.count++;n.selfBytes+=size;byName.set(key,n);
+   }
+   const sort=m=>[...m].map(([name,v])=>({name,...v})).sort((a,b)=>b.selfBytes-a.selfBytes).slice(0,25);
+   const z=require("node:zlib").gzipSync(Buffer.from(raw));
+   const filename=heapDir+"/"+label+".heapsnapshot.gz";
+   fs.writeFileSync(filename,z);
+   const record={label,filename,sha256:crypto.createHash("sha256").update(z).digest("hex"),compressedBytes:z.length,nodeCount:parsed.nodes.length/stride,topTypes:sort(byType),topNames:sort(byName)};
+   heapEvidence.push(record);
+   return record;
+  }
+  const gcAvailable=await page.evaluate(()=>typeof gc==="function");
+  if(!gcAvailable)throw Error("Required page GC hook unavailable");
+  await heapSnapshot(cdp,"exercised-after-navigation");
+  const isolated=await browser.newContext();
+  let cleanControl;
+  try{
+   const cleanPage=await isolated.newPage();
+   const cleanCdp=await isolated.newCDPSession(cleanPage);
+   await cleanCdp.send("Performance.enable");
+   await cleanPage.goto("http://127.0.0.1:4173/audio-measure.html");
+   if(!(await cleanPage.evaluate(()=>typeof gc==="function")))throw Error("Control GC unavailable");
+   cleanControl=await heapSnapshot(cleanCdp,"never-exercised-control");
+   if(await cleanPage.locator("#audio-file").inputValue()||await cleanPage.locator("#results").isVisible())throw Error("Control not clean");
+  }finally{await isolated.close()}
+  // Same-target no-audio navigation checks instrumentation overhead separately.
+  await page.goto("http://127.0.0.1:4173/audio-measure.html");
+  await page.waitForTimeout(300);
+  await heapSnapshot(cdp,"exercised-second-navigation");
+  const heapComparison={gcAvailable,heapEvidence,controlSnapshotSha256:cleanControl.sha256,
+   caveat:"Self sizes are not retained/dominator sizes. Snapshot files contain full object graphs; inspect retaining paths before claiming application ownership. No memory budget is inferred."};
+  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,navigationComparison,contextComparison,heapComparison,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
   if(!peakRss||rssSampleCount<3||rssError||snapshots.some(x=>!x.chromeProcessRssKiB||!x.processes?.length))throw Error("Invalid RSS instrumentation: "+JSON.stringify({peakRss,rssSampleCount,rssError,snapshots}));fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{clearInterval(timer);await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
