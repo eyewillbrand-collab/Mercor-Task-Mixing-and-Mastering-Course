@@ -2,7 +2,17 @@
 const { chromium } = require("@playwright/test");
 const fs=require("node:fs"),crypto=require("node:crypto"),cp=require("node:child_process");
 const EXPECTED="4fc91ea857f635e4d8babea1b40c51fd0e40740d";
-function chromeRssKiB(){try{const s=cp.execFileSync("ps",["-eo","pid=,rss=,comm="],{encoding:"utf8"});return s.split("\n").reduce((a,line)=>{const m=line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);return a+(m&&/chrom(e|ium)/i.test(m[3])?Number(m[2]):0)},0)}catch{return null}}
+function chromeRssKiB(){
+ const s=cp.execFileSync("ps",["-eo","pid=,ppid=,rss=,args="],{encoding:"utf8"});
+ const rows=s.split("\n").map(line=>line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean).map(m=>({pid:+m[1],ppid:+m[2],rss:+m[3],cmd:m[4]}));
+ // Only include the launched Playwright browser process and its descendants.
+ const roots=rows.filter(r=>r.cmd.includes("chromium")&&r.cmd.includes("--remote-debugging-pipe")&&!r.cmd.includes("ps -eo"));
+ const ids=new Set(roots.map(r=>r.pid));
+ let changed=true;while(changed){changed=false;for(const r of rows)if(ids.has(r.ppid)&&!ids.has(r.pid)){ids.add(r.pid);changed=true}}
+ const members=rows.filter(r=>ids.has(r.pid));
+ if(!roots.length||!members.length)throw Error("Chromium RSS unavailable: no matching browser process; process sample="+JSON.stringify(rows.filter(r=>/chrom|headless/i.test(r.cmd)).slice(0,8)));
+ return {rssKiB:members.reduce((sum,r)=>sum+r.rss,0),processCount:members.length,rootPids:roots.map(r=>r.pid)};
+}
 function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byteOffset,b.byteLength);b.write("RIFF",0);v.setUint32(4,n-8,true);b.write("WAVE",8);b.write("fmt ",12);v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,96000,true);v.setUint32(28,384000,true);v.setUint16(32,4,true);v.setUint16(34,16,true);b.write("data",36);v.setUint32(40,n-44,true);return b}
 (async()=>{
  const sha=cp.execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim();
@@ -15,8 +25,8 @@ function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byte
  }
  const browser=await chromium.launch({headless:true,args:["--enable-precise-memory-info","--js-flags=--expose-gc"]});
  const page=await browser.newPage();const cdp=await page.context().newCDPSession(page);await cdp.send("Performance.enable");
- const snapshots=[],sample=async(label)=>{const metrics=await cdp.send("Performance.getMetrics");const vals=Object.fromEntries(metrics.metrics.map(x=>[x.name,x.value]));snapshots.push({label,time:new Date().toISOString(),jsHeapUsedBytes:vals.JSHeapUsedSize,jsHeapTotalBytes:vals.JSHeapTotalSize,chromeProcessRssKiB:chromeRssKiB()})};
- let peakRss=0;const timer=setInterval(()=>{const x=chromeRssKiB();if(x!==null)peakRss=Math.max(peakRss,x)},25);
+ const snapshots=[],sample=async(label)=>{const metrics=await cdp.send("Performance.getMetrics");const vals=Object.fromEntries(metrics.metrics.map(x=>[x.name,x.value]));snapshots.push({label,time:new Date().toISOString(),jsHeapUsedBytes:vals.JSHeapUsedSize,jsHeapTotalBytes:vals.JSHeapTotalSize,chromeProcessRssKiB:chromeRssKiB().rssKiB})};
+ let peakRss=0,rssSampleCount=0,rssError=null;const timer=setInterval(()=>{try{const x=chromeRssKiB();peakRss=Math.max(peakRss,x.rssKiB);rssSampleCount++}catch(e){rssError=String(e.message)}},100);
  try{
   await page.goto("http://127.0.0.1:4173/audio-measure.html");
   await sample("baseline");
@@ -32,7 +42,7 @@ function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byte
    await page.evaluate(()=>{if(typeof gc==="function")gc()});
    await sample("after-clear-"+(i+1));
   }
-  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
-  fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
+  if(!peakRss||rssSampleCount<3||snapshots.some(x=>!x.chromeProcessRssKiB))throw Error("Invalid RSS instrumentation: "+JSON.stringify({peakRss,rssSampleCount,rssError,snapshots}));fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{clearInterval(timer);await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
