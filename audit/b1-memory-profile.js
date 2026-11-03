@@ -72,7 +72,31 @@ function wav(nonSilent=false){const n=10485760,b=Buffer.alloc(n),v=new DataView(
    after:{jsHeapUsedBytes:afterNavigation.jsHeapUsedBytes,rendererRssKiB:afterNavigation.processes.filter(x=>x.role==="renderer").reduce((a,x)=>a+x.rssKiB,0),aggregateRssKiB:afterNavigation.chromeProcessRssKiB}
   };
   if(!navigationComparison.before.rendererRssKiB||!navigationComparison.after.rendererRssKiB)throw Error("Renderer RSS missing for navigation comparison");
-  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,navigationComparison,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
+  // Independent context control: fresh document with no audio selections.
+  const controlContext=await browser.newContext();
+  let contextComparison;
+  try{
+   const controlPage=await controlContext.newPage();
+   const controlCdp=await controlContext.newCDPSession(controlPage);
+   await controlCdp.send("Performance.enable");
+   await controlPage.goto("http://127.0.0.1:4173/audio-measure.html",{waitUntil:"load"});
+   await controlPage.waitForTimeout(1000);
+   await controlPage.evaluate(()=>{if(typeof gc==="function")gc()});
+   const controlMetrics=await controlCdp.send("Performance.getMetrics");
+   const controlValues=Object.fromEntries(controlMetrics.metrics.map(x=>[x.name,x.value]));
+   const controlProcess=chromeRssKiB();
+   const controlRenderer=controlProcess.processes.filter(x=>x.role==="renderer");
+   if(!Number.isFinite(controlValues.JSHeapUsedSize)||!controlRenderer.length)throw Error("Independent context metrics unavailable");
+   if(await controlPage.locator("#audio-file").inputValue())throw Error("Control context has unexpected audio input");
+   if(await controlPage.locator("#results").isVisible())throw Error("Control context has unexpected results");
+   contextComparison={
+    usedContextAfterNavigation:{jsHeapUsedBytes:afterNavigation.jsHeapUsedBytes,rendererRssKiB:navigationComparison.after.rendererRssKiB},
+    freshContext:{jsHeapUsedBytes:controlValues.JSHeapUsedSize,rendererRssKiB:controlRenderer.reduce((a,x)=>a+x.rssKiB,0),rendererPids:controlRenderer.map(x=>x.pid)},
+    note:"Fresh context and used context share a Chromium browser; aggregate process RSS and renderer RSS may overlap. Compare independent CDP heap targets, not summed RSS as an isolated per-context budget."
+   };
+   await sample("used-context-while-control-open");
+  }finally{await controlContext.close()}
+  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,navigationComparison,contextComparison,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
   if(!peakRss||rssSampleCount<3||rssError||snapshots.some(x=>!x.chromeProcessRssKiB||!x.processes?.length))throw Error("Invalid RSS instrumentation: "+JSON.stringify({peakRss,rssSampleCount,rssError,snapshots}));fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{clearInterval(timer);await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
