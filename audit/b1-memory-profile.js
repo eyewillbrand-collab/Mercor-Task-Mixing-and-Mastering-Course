@@ -13,7 +13,7 @@ function chromeRssKiB(){
  if(!roots.length||!members.length)throw Error("Chromium RSS unavailable: no matching browser process; process sample="+JSON.stringify(rows.filter(r=>/chrom|headless/i.test(r.cmd)).slice(0,8)));
  return {rssKiB:members.reduce((sum,r)=>sum+r.rss,0),processCount:members.length,rootPids:roots.map(r=>r.pid)};
 }
-function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byteOffset,b.byteLength);b.write("RIFF",0);v.setUint32(4,n-8,true);b.write("WAVE",8);b.write("fmt ",12);v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,96000,true);v.setUint32(28,384000,true);v.setUint16(32,4,true);v.setUint16(34,16,true);b.write("data",36);v.setUint32(40,n-44,true);return b}
+function wav(nonSilent=false){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byteOffset,b.byteLength);b.write("RIFF",0);v.setUint32(4,n-8,true);b.write("WAVE",8);b.write("fmt ",12);v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,96000,true);v.setUint32(28,384000,true);v.setUint16(32,4,true);v.setUint16(34,16,true);b.write("data",36);v.setUint32(40,n-44,true);if(nonSilent){for(let p=44;p<n;p+=4){const frame=(p-44)/4;const sample=Math.round(12000*Math.sin(2*Math.PI*440*frame/96000));v.setInt16(p,sample,true);v.setInt16(p+2,sample,true)}}return b}
 (async()=>{
  const sha=cp.execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim();
  const base=cp.execFileSync("git",["merge-base","HEAD",EXPECTED],{encoding:"utf8"}).trim();
@@ -30,7 +30,7 @@ function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byte
  try{
   await page.goto("http://127.0.0.1:4173/audio-measure.html");
   await sample("baseline");
-  const bytes=wav();const durations=[];
+  const bytes=wav(),toneBytes=wav(true);const durations=[];
   for(let i=0;i<5;i++){
    const start=Date.now();
    await page.locator("#audio-file").setInputFiles({name:"max.wav",mimeType:"audio/wav",buffer:bytes});
@@ -42,7 +42,18 @@ function wav(){const n=10485760,b=Buffer.alloc(n),v=new DataView(b.buffer,b.byte
    await page.evaluate(()=>{if(typeof gc==="function")gc()});
    await sample("after-clear-"+(i+1));
   }
-  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
+  // A separate non-silent input checks that measurement completion is not specific to digital silence.
+  const toneStart=Date.now();
+  await page.locator("#audio-file").setInputFiles({name:"tone.wav",mimeType:"audio/wav",buffer:toneBytes});
+  await page.waitForFunction(() => document.querySelector("#status")?.textContent==="Measurement complete.",null,{timeout:15000});
+  if(!(await page.locator("#results").isVisible()))throw Error("Tone measurement results missing");
+  await sample("non-silent-selection");
+  const toneElapsedMs=Date.now()-toneStart;
+  await page.locator("#audio-file").setInputFiles([]);
+  await page.waitForTimeout(150);
+  await page.evaluate(()=>{if(typeof gc==="function")gc()});
+  await sample("after-non-silent-clear");
+  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
   if(!peakRss||rssSampleCount<3||snapshots.some(x=>!x.chromeProcessRssKiB))throw Error("Invalid RSS instrumentation: "+JSON.stringify({peakRss,rssSampleCount,rssError,snapshots}));fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{clearInterval(timer);await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
