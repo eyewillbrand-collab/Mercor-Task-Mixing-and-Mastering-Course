@@ -58,7 +58,21 @@ function wav(nonSilent=false){const n=10485760,b=Buffer.alloc(n),v=new DataView(
    await page.evaluate(()=>{if(typeof gc==="function")gc()});
    await sample("settled-after-tone-"+delayMs+"ms");
   }
-  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
+  // Compare settled input-clear state with a fresh document in the same renderer.
+  const beforeNavigation=snapshots[snapshots.length-1];
+  await page.goto("http://127.0.0.1:4173/audio-measure.html",{waitUntil:"load"});
+  await page.waitForTimeout(1000);
+  await page.evaluate(()=>{if(typeof gc==="function")gc()});
+  await sample("fresh-page-after-navigation");
+  const afterNavigation=snapshots[snapshots.length-1];
+  if(await page.locator("#audio-file").inputValue())throw Error("Fresh page still has selected input");
+  if(await page.locator("#results").isVisible())throw Error("Fresh page unexpectedly retains measurement results");
+  const navigationComparison={
+   before:{jsHeapUsedBytes:beforeNavigation.jsHeapUsedBytes,rendererRssKiB:beforeNavigation.processes.filter(x=>x.role==="renderer").reduce((a,x)=>a+x.rssKiB,0),aggregateRssKiB:beforeNavigation.chromeProcessRssKiB},
+   after:{jsHeapUsedBytes:afterNavigation.jsHeapUsedBytes,rendererRssKiB:afterNavigation.processes.filter(x=>x.role==="renderer").reduce((a,x)=>a+x.rssKiB,0),aggregateRssKiB:afterNavigation.chromeProcessRssKiB}
+  };
+  if(!navigationComparison.before.rendererRssKiB||!navigationComparison.after.rendererRssKiB)throw Error("Renderer RSS missing for navigation comparison");
+  const result={frozenSha:EXPECTED,auditCommit:sha,chromiumVersion:browser.version(),fileBytes:bytes.length,nonSilentToneHz:440,nonSilentElapsedMs:toneElapsedMs,navigationComparison,selectionElapsedMs:durations,peakAggregateChromiumRssKiB:peakRss,rssSampleCount,rssError,snapshots,disclaimer:"Aggregate Chromium RSS includes browser and child processes, not per-tab peak; CDP JS heap excludes ArrayBuffer backing stores. CI host-specific observations, not a universal memory budget."};
   if(!peakRss||rssSampleCount<3||rssError||snapshots.some(x=>!x.chromeProcessRssKiB||!x.processes?.length))throw Error("Invalid RSS instrumentation: "+JSON.stringify({peakRss,rssSampleCount,rssError,snapshots}));fs.mkdirSync("memory-evidence",{recursive:true});fs.writeFileSync("memory-evidence/results.json",JSON.stringify(result,null,2));console.log(JSON.stringify(result));
  }finally{clearInterval(timer);await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
